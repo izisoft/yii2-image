@@ -39,6 +39,20 @@ class UrlManager extends \yii\web\UrlManager
         ]);
          
     }
+    
+    
+    /**
+     * Setup model class
+     */
+    private $_model ;
+    
+    public function getModel(){
+        if($this->_model == null){
+            $this->_model = Yii::createObject(UrlModel::class);
+        }
+        return $this->_model;
+    }
+    
 
     /**
      * return all module in config file
@@ -206,15 +220,15 @@ class UrlManager extends \yii\web\UrlManager
             }
             
             if(!empty($router)){
-                foreach ($router as $v) {
+//                 foreach ($router as $v) {
                     
-                    if(isset(Yii::$app->view->specialPage) && !(DOMAIN_LAYOUT != "" && in_array(DOMAIN_LAYOUT, Yii::$app->view->specialPage))
-                        && in_array($v, Yii::$app->view->specialPage)){
-                            define('SPECIAL_LAYOUT', array_shift($router));
-                    }
+//                     if(isset(Yii::$app->view->specialPage) && !(DOMAIN_LAYOUT != "" && in_array(DOMAIN_LAYOUT, Yii::$app->view->specialPage))
+//                         && in_array($v, Yii::$app->view->specialPage)){
+//                             define('SPECIAL_LAYOUT', array_shift($router));
+//                     }
                     
-                    break;
-                }
+//                     break;
+//                 }
                 foreach ($router as $k=>$v) {
                     switch ($k) {
                         case 0: // controller
@@ -275,9 +289,9 @@ class UrlManager extends \yii\web\UrlManager
             
             
             //  Setup language
-            $this->setLanguage($this->_slug);
+            //$this->setLanguage($this->_slug);
             // Setup template
-            $this->setTemplate($this->_router);
+            //$this->setTemplate($this->_router);
         
         }else{
             $this->addRules([
@@ -315,6 +329,7 @@ class UrlManager extends \yii\web\UrlManager
     }
 
 
+    private $_slug;
     /**
      * frontend request
      */
@@ -352,19 +367,218 @@ class UrlManager extends \yii\web\UrlManager
                 switch ($k) {
                     case 'controller':
                         
+                        $this->_slug = \izi\models\Slugs::find()->where(['sid' => __SID__, 'url' => $v])->asArray()->one();
+                        
+                        if(empty($this->_slug)){
+                            $lang = \izi\models\AdLanguages::find()->where(['or', ['code' => $v], ['hl' => $v]])->one();
+                            
+                            if(!empty($lang)){
+                                $this->_slug['route'] = 'index';
+                                $this->_slug['url'] = $v;
+                                $this->_slug['item_id'] = 0;
+                                $this->_slug['item_type'] = 100;
+                                $this->_slug['lang'] = $lang->code;
+                            }
+                        }
+                         
+                        
+                        if(!empty($this->_slug)){
+                            
+                            $this->_router['controller'] = $this->_slug['route'];
+                            defined('__DETAIL_URL__') or define('__DETAIL_URL__', $this->_slug['url']);
+                            defined('__CONTROLLER__') or define('__CONTROLLER__', $this->_slug['route']);
+                            define('__ITEM_ID__', $this->_slug['item_id']);
+                            define('__ITEM_TYPE__', $this->_slug['item_type']);
+                            
+                            switch(__ITEM_TYPE__){
+                                case 0: // Category
+                                    $category = $this->getModel()->getCategoryDetail(__ITEM_ID__);
+                                    
+                                    /**
+                                     *
+                                     */
+                                    if($category['route'] == 'manual'){
+                                        $this->_router['action'] = trim($category['link_target'],'/');
+                                    }
+                                    //
+                                    if(isset($category['temp_id']) && $category['temp_id']>0){
+                                        defined('CATEGORY_TEMPLATE') or define('CATEGORY_TEMPLATE',$category['temp_id']);
+                                    }
+                                    //
+                                    if(isset($category['style']) && $category['style']>0){
+                                        defined('CATEGORY_STYLE') or define('CATEGORY_STYLE',$category['style']);
+                                    }
+                                    /**
+                                     *
+                                     */
+                                    $category['root'] = (object)$this->getModel()->getRootCategoryDetail($category);
+                                    
+                                    Yii::$app->view->setCategory((object)$category);
+                                    
+                                    break;
+                                case 1: // Article detail
+                                    
+                                    $this->_router['action'] = 'detail';
+                                    
+                                    $isDetail = true;
+                                    
+                                    $item = $this->getModel()->getItemDetail(__ITEM_ID__);
+                                    
+                                    
+                                    
+                                    /**
+                                     *
+                                     */
+                                    
+                                    //
+                                    if(isset($item['temp_id']) && $item['temp_id']>0){
+                                        defined('ITEM_TEMPLATE') or define('ITEM_TEMPLATE',$item['temp_id']);
+                                    }
+                                    //
+                                    if(isset($item['style']) && $item['style']>0){
+                                        defined('ITEM_STYLE') or define('ITEM_STYLE',$item['style']);
+                                    }
+                                    /**
+                                     *
+                                     */
+                                    if(!empty($item)){
+                                        $category = $this->getModel()->getItemCategory(__ITEM_ID__);
+                                        
+                                        $category['root'] = (object)$this->getModel()->getRootCategoryDetail($category);
+                                        
+                                        $item['category'] = (object)$category;
+                                        
+                                        Yii::$app->view->setCategory((object)$category);
+                                        Yii::$app->view->setItem((object)$item);
+                                    }
+                                    
+                                    
+                                    break;
+                                case 2: // Box detail
+                                    $item = $category= $this->getModel()->getBoxDetail(__ITEM_ID__);
+                                    
+                                    /**
+                                     *
+                                     */
+                                    
+                                    /**
+                                     *
+                                     */
+                                    
+                                    Yii::$app->view->setCategory((object)$category);
+                                    Yii::$app->view->setItem((object)$item);
+                                    
+                                    
+                                    
+                                    break;
+                                    
+                                case 8: // new product
+                                    $this->_router['action'] = 'detail';
+                                    
+                                    $isDetail = true;
+                                    
+                                    $item = Yii::$app->product->model->getItem(__ITEM_ID__)->toArray();
+                                     
+                                    
+                                    /**
+                                     *
+                                     */
+                                    if(!empty($item)){
+                                        
+                                        $item['id'] = $item['entity_id'];
+                                        
+                                        $item['name'] = $item['title']  = Yii::$app->product->getAttrValue(__ITEM_ID__, 'name');
+                                        
+                                        $item['url_link']  = Yii::$app->product->getAttrValue(__ITEM_ID__, 'url_link');
+                                        
+                                        $item['time'] = $item['created_at'];
+                                        
+                                        $item['created_by'] = 0;
+                                        
+                                        $item['code'] = $item['sku'];
+                                        
+                                        $item['price2'] = $item['price'] = Yii::$app->product->getPrice(__ITEM_ID__, 'price');
+                                        
+                                        $item['currency'] = max(1, Yii::$app->product->getPrice(__ITEM_ID__, 'currency'));
+                                        
+                                        $item['status'] = Yii::$app->product->getPrice(__ITEM_ID__, 'status');
+                                        
+                                        $category = Yii::$app->product->model->getItemCategory(__ITEM_ID__);
+                                        
+                                        $category['root'] = (object)$this->getModel()->getRootCategoryDetail($category);
+                                        
+                                        $item['category'] = (object)$category;
+                                        
+                                        Yii::$app->view->setCategory((object)$category);
+                                        
+                                        Yii::$app->view->setItem((object)$item);
+                                    }
+                                    
+                                    break;
+                            }
+                        }else{
+                            
+                        }
+                        
+                        break;
+                    default:
+                        
+                        
+                        $this->_router[$k] = $v;
                         
                         break;
                 }
+                
+                if($br) break;
             }
         }
-        
-        view($this->_router,1,1);
-        
+         
         /////////////////////////////////////
+        
         
     }
     
     
+    
+    /**
+     * 
+     */
+    
+    public function getRootCategoryDetail($item = []){
+        if(is_numeric($item)){
+            $item = $this->getCategoryDetail($item);
+        }
+        
+        if(!empty($item)){
+            
+            if(isset($item['parent_id']) && $item['parent_id'] == 0){
+                return $item;
+            }else{
+                
+                $item = static::find()
+                ->from('{{%site_menu}}')
+                ->where(['and',[
+                    "parent_id" => 0,
+                    'is_active'=>1 ,
+                    'sid'=>__SID__
+                ],
+                    ['<', 'lft', $item['lft']],
+                    ['>', 'rgt', $item['rgt']],
+                ])->asArray()->one();
+                
+                return $this->populateData($item);
+                
+                //                 if(!empty($item)) {
+                //                     if(isset($item['bizrule']) && ($content = json_decode($item['bizrule'],1)) != NULL){
+                //                         $item += $content;
+                //                         unset($item['bizrule']);
+                //                     }
+                //                     return $item;
+                //                 }
+            }
+                
+        }
+    }
     
     
     
